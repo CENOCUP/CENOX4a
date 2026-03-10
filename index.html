@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FIFA DATABASE - v7.5</title>
+    <style>
+        :root { --bg: #0a0a0c; --card: #121215; --neon: #00ff87; --gold: #ffd700; --silver: #c0c0c0; --bronze: #cd7f32; --danger: #ff4444; --blue: #00d4ff; --text: #ffffff; }
+        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 1100px; }
+        header { text-align: center; padding: 20px; border-bottom: 1px solid #222; cursor: pointer; }
+        h1 span { color: var(--neon); }
+
+        /* Admin */
+        #admin { display: none; background: #1a1a1e; padding: 20px; border: 1px solid var(--neon); border-radius: 12px; margin: 20px 0; }
+        .btn { padding: 10px 15px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 10px; margin: 2px; }
+        .btn-blue { background: var(--blue); color: #fff; }
+        .btn-green { background: var(--neon); color: #000; }
+        
+        /* Abas */
+        .tabs { display: flex; gap: 8px; justify-content: center; margin: 25px 0; flex-wrap: wrap; }
+        .tab-btn { background: #222; color: #fff; padding: 10px 20px; border-radius: 30px; border: 1px solid #333; cursor: pointer; font-weight: bold; }
+        .tab-btn.active { background: var(--neon); color: #000; border-color: var(--neon); }
+
+        /* Tabelas */
+        .table-wrapper { background: var(--card); border-radius: 12px; overflow: hidden; border: 1px solid #222; margin-bottom: 30px; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th { background: #1c1c21; color: #888; padding: 15px; font-size: 10px; text-transform: uppercase; }
+        td { padding: 12px 10px; border-bottom: 1px solid #1c1c21; text-align: center; }
+        .player-info { display: flex; align-items: center; gap: 10px; text-align: left; }
+        .club-img { width: 30px; height: 30px; object-fit: contain; border-radius: 4px; }
+        
+        /* Galeria Dashboard */
+        .gallery-grid { display: none; flex-direction: column; gap: 40px; width: 100%; }
+        .season-block { background: var(--card); border-radius: 15px; padding: 20px; border: 1px solid #333; }
+        .podium-dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+        .dash-card { background: #1c1c21; border-radius: 10px; padding: 15px; text-align: center; border-bottom: 4px solid #333; }
+        .dash-card img { width: 60px; height: 60px; object-fit: contain; margin-bottom: 10px; }
+
+        .row-edit { display: flex; gap: 5px; margin-bottom: 8px; flex-wrap: wrap; background: #25252b; padding: 10px; border-radius: 8px; }
+        input { background: #000; border: 1px solid #444; color: #fff; padding: 5px; border-radius: 4px; font-size: 11px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header onclick="openAdmin()">
+        <h1>FIFA <span>DASHBOARD</span></h1>
+        <p style="color:#555; font-size: 10px;">v7.5 - ESTATÍSTICAS HISTÓRICAS AVANÇADAS</p>
+    </header>
+
+    <div id="admin">
+        <div style="display:flex; gap:10px; margin-bottom:20px;">
+            <button class="btn btn-blue" onclick="exportData()">Exportar JSON</button>
+            <button class="btn btn-blue" onclick="importData()">Importar JSON</button>
+        </div>
+        <div id="editor-atual"></div>
+        <button class="btn btn-green" onclick="addNewPlayer()">+ Novo Técnico</button>
+        <button class="btn btn-green" onclick="saveAll()" style="width:100%; margin-top:20px; height:45px;">SALVAR ALTERAÇÕES</button>
+        <button class="btn" onclick="closeSeason()" style="background:#400; color:#f66; width:100%; margin-top:10px">ENCERRAR ÉPOCA</button>
+    </div>
+
+    <div class="tabs">
+        <button id="t-tab" class="tab-btn active" onclick="switchTab('tabela')">TEMPORADA</button>
+        <button id="r-tab" class="tab-btn" onclick="switchTab('ranking')">RANKING GERAL</button>
+        <button id="g-tab" class="tab-btn" onclick="switchTab('galeria')">GALERIA</button>
+    </div>
+
+    <div id="view-tabela">
+        <select id="season-selector" onchange="changeView(this.value)" style="width:100%; padding:12px; background:#111; color:var(--neon); border:1px solid #333; border-radius:8px; margin-bottom:15px;"></select>
+        <div class="table-wrapper"><table id="table-main"></table></div>
+    </div>
+
+    <div id="view-ranking" style="display:none">
+        <div class="table-wrapper"><table id="table-ranking"></table></div>
+    </div>
+
+    <div id="view-galeria" class="gallery-grid"></div>
+</div>
+
+<script>
+    const STORAGE_KEY = 'fifa_dash_v75';
+    let db = JSON.parse(localStorage.getItem(STORAGE_KEY)) || { atual: [], historico: [] };
+    let currentMode = 'atual';
+
+    function openAdmin() { if(prompt("Senha:") === '123') document.getElementById('admin').style.display='block'; }
+
+    function switchTab(mode) {
+        document.getElementById('view-tabela').style.display = mode === 'tabela' ? 'block' : 'none';
+        document.getElementById('view-ranking').style.display = mode === 'ranking' ? 'block' : 'none';
+        document.getElementById('view-galeria').style.display = mode === 'galeria' ? 'flex' : 'none';
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        if(mode === 'tabela') document.getElementById('t-tab').classList.add('active');
+        if(mode === 'ranking') { document.getElementById('r-tab').classList.add('active'); renderRankingGeral(); }
+        if(mode === 'galeria') { document.getElementById('g-tab').classList.add('active'); renderGallery(); }
+    }
+
+    function calcStats(v, e, d, gp, gc) {
+        const pts = (v * 3) + e;
+        const j = v + e + d;
+        return {
+            pts, j,
+            apr: j > 0 ? ((pts / (j * 3)) * 100).toFixed(1) : 0,
+            forca: ((gp * 3.5) - (gc * 2.5)).toFixed(1)
+        };
+    }
+
+    function renderTable() {
+        const selector = document.getElementById('season-selector');
+        selector.innerHTML = '<option value="atual">Época Atual</option>';
+        db.historico.forEach((h, i) => selector.innerHTML += `<option value="${i}">${h.nome}</option>`);
+
+        let list = currentMode === 'atual' ? [...db.atual] : [...db.historico[currentMode].dados];
+        list.sort((a,b) => ((b.v*3)+b.e) - ((a.v*3)+a.e) || (b.gp-b.gc) - (a.gp-a.gc));
+
+        const table = document.getElementById('table-main');
+        table.innerHTML = `<thead><tr><th>POS</th><th style="text-align:left">TÉCNICO</th><th>PTS</th><th>J</th><th>V</th><th>E</th><th>D</th><th>GP</th><th>GS</th><th>%</th><th>FORÇA</th></tr></thead>
+        <tbody>${list.map((j, i) => {
+            const s = calcStats(j.v, j.e, j.d, j.gp, j.gc);
+            return `<tr><td>${i+1}º</td><td class="player-info"><img src="${j.foto||''}" class="club-img"><b>${j.tecnico}</b></td><td>${s.pts}</td><td>${s.j}</td><td>${j.v}</td><td>${j.e}</td><td>${j.d}</td><td>${j.gp}</td><td>${j.gc}</td><td style="color:var(--blue)">${s.apr}%</td><td style="color:var(--gold)">${s.forca}</td></tr>`;
+        }).join('')}</tbody>`;
+        renderEditor();
+    }
+
+    function renderRankingGeral() {
+        let stats = {};
+        // Pega histórico + atual
+        [...db.historico.flatMap(h => h.dados), ...db.atual].forEach(j => {
+            if(!stats[j.tecnico]) stats[j.tecnico] = { t: j.tecnico, pts:0, j:0, v:0, e:0, d:0, gp:0, gc:0, forcas: [] };
+            stats[j.tecnico].pts += (j.v*3)+j.e;
+            stats[j.tecnico].j += (j.v+j.e+j.d);
+            stats[j.tecnico].v += j.v; stats[j.tecnico].e += j.e; stats[j.tecnico].d += j.d;
+            stats[j.tecnico].gp += j.gp; stats[j.tecnico].gc += j.gc;
+            stats[j.tecnico].forcas.push(parseFloat(((j.gp * 3.5) - (j.gc * 2.5))));
+        });
+
+        let list = Object.values(stats).sort((a,b) => b.pts - a.pts || (b.gp-b.gc) - (a.gp-a.gc));
+
+        const table = document.getElementById('table-ranking');
+        table.innerHTML = `<thead><tr><th>POS</th><th style="text-align:left">TÉCNICO</th><th>PTS TOTAL</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SALDO</th><th style="color:var(--blue)">APR %</th><th style="color:var(--gold)">FORÇA MÉDIA</th></tr></thead>
+        <tbody>${list.map((j, i) => {
+            const aprGeral = j.j > 0 ? ((j.pts / (j.j * 3)) * 100).toFixed(1) : 0;
+            const forcaMedia = (j.forcas.reduce((a,b) => a+b, 0) / j.forcas.length).toFixed(1);
+            return `<tr><td>${i+1}º</td><td style="text-align:left"><b>${j.t}</b></td><td style="color:var(--neon)">${j.pts}</td><td>${j.j}</td><td>${j.v}</td><td>${j.e}</td><td>${j.d}</td><td>${j.gp-j.gc}</td><td style="color:var(--blue)">${aprGeral}%</td><td style="color:var(--gold)">${forcaMedia}</td></tr>`;
+        }).join('')}</tbody>`;
+    }
+
+    function renderGallery() {
+        const galeria = document.getElementById('view-galeria');
+        galeria.innerHTML = db.historico.map(h => {
+            const p = h.dados;
+            return `<div class="season-block"><div style="color:var(--neon); font-weight:bold; margin-bottom:15px">${h.nome}</div><div class="podium-dashboard">
+                <div class="dash-card" style="border-color:var(--gold)"><img src="${p[0].foto}"><h4>${p[0].tecnico}</h4><small>CAMPEÃO</small></div>
+                ${p[1]?`<div class="dash-card" style="border-color:var(--silver)"><img src="${p[1].foto}"><h4>${p[1].tecnico}</h4><small>VICE</small></div>`:''}
+                ${p[2]?`<div class="dash-card" style="border-color:var(--bronze)"><img src="${p[2].foto}"><h4>${p[2].tecnico}</h4><small>3º LUGAR</small></div>`:''}
+                ${p.length>3?`<div class="dash-card" style="border-color:var(--danger)"><img src="${p[p.length-1].foto}"><h4>${p[p.length-1].tecnico}</h4><small style="color:var(--danger)">LANTERNA</small></div>`:''}
+            </div></div>`;
+        }).reverse().join('');
+    }
+
+    function renderEditor() {
+        document.getElementById('editor-atual').innerHTML = db.atual.map((j, i) => `
+            <div class="row-edit">
+                <input style="width:100px" type="text" value="${j.tecnico}" onchange="db.atual[${i}].tecnico=this.value">
+                <input style="width:120px" type="text" placeholder="URL Foto" value="${j.foto||''}" onchange="db.atual[${i}].foto=this.value">
+                V <input type="number" value="${j.v}" onchange="db.atual[${i}].v=parseInt(this.value)">
+                E <input type="number" value="${j.e}" onchange="db.atual[${i}].e=parseInt(this.value)">
+                D <input type="number" value="${j.d}" onchange="db.atual[${i}].d=parseInt(this.value)">
+                GP <input type="number" value="${j.gp}" onchange="db.atual[${i}].gp=parseInt(this.value)">
+                GS <input type="number" value="${j.gc}" onchange="db.atual[${i}].gc=parseInt(this.value)">
+                <button onclick="db.atual.splice(${i},1);saveAll()" style="color:red; background:none; border:none;">X</button>
+            </div>`).join('');
+    }
+
+    function changeView(v) { currentMode = v; renderTable(); }
+    function saveAll() { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); renderTable(); }
+    function addNewPlayer() { db.atual.push({tecnico: "Novo", foto: "", v:0, e:0, d:0, gp:0, gc:0}); renderTable(); }
+    function exportData() {
+        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(db)], {type:'application/json'}));
+        a.download = 'backup_v75.json'; a.click();
+    }
+    function importData() {
+        const f = document.createElement('input'); f.type = 'file';
+        f.onchange = e => {
+            const r = new FileReader(); r.readAsText(e.target.files[0]);
+            r.onload = ev => { db = JSON.parse(ev.target.result); saveAll(); location.reload(); };
+        }; f.click();
+    }
+    function closeSeason() {
+        let name = prompt("Nome da Época:");
+        if(name && db.atual.length > 0) {
+            db.atual.sort((a,b) => ((b.v*3)+b.e) - ((a.v*3)+a.e) || (b.gp-b.gc) - (a.gp-a.gc));
+            db.historico.push({ nome: name, dados: JSON.parse(JSON.stringify(db.atual)) });
+            db.atual = db.atual.map(j => ({...j, v:0, e:0, d:0, gp:0, gc:0}));
+            saveAll();
+        }
+    }
+    renderTable();
+</script>
+</body>
+</html>
